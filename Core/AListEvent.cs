@@ -1,75 +1,103 @@
+using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace ScriptableClass.Core
 {
-      public abstract class AListEvent<T> : AValueEvent<List<T>>
+      public abstract class AListEvent<T> : AValueEvent<List<T>>, IList<T>
       {
-            public delegate void OnAddValue(T value);
-            public event OnAddValue onAddValue;
+            public event Action<T> OnAddValue;
+            public event Action<T> OnRemoveValue;
+            public event Action<T> OnModifyElement;
 
-            public delegate void OnRemoveValue(T value);
-            public event OnRemoveValue onRemoveValue;
-
-            public delegate void OnModifyElement(T value);
-            public event OnModifyElement onModifyElement;
+            public int Count => Value.Count;
+            public bool IsReadOnly => false;
 
             public T this[int index]
             {
-                  get => this.Value[index];
+                  get => Value[index];
                   set
                   {
-                        if (CheckIndex(index) && !this.Value[index].Equals(value))
+                        if (CheckIndex(index) && !Value[index].Equals(value))
                         {
-                              this.Value[index] = value;
-                              onModifyElement?.Invoke(value);
+                              Value[index] = value;
+                              OnModifyElement?.Invoke(value);
                         }
                   }
             }
 
-            public virtual void Add(T element)
+            // --------------------------------------------------------
+            // Méthodes d'insertions
+            // --------------------------------------------------------
+
+            public virtual void Add(T item)
             {
-                  this.Value.Add(element);
-                  onAddValue?.Invoke(element);
+                  Value.Add(item);
+                  OnAddValue?.Invoke(item);
             }
 
-            public virtual void Insert(int index, T element)
+            public virtual void Insert(int index, T item)
             {
-                  if (CheckIndex(index))
+                  if (CheckIndex(index, true))
                   {
-                        this.Value.Insert(index, element);
-                        onAddValue?.Invoke(element);
+                        Value.Insert(index, item);
+                        OnAddValue?.Invoke(item);
                   }
             }
 
             public virtual void InsertRange(int index, IEnumerable<T> elements)
             {
-                  if (CheckIndex(index))
+                  if (CheckIndex(index, true))
                   {
-                        foreach (T element in elements)
+                        IEnumerable<T> collection = elements as T[] ?? elements.ToArray();
+                        Value.InsertRange(index, collection);
+
+                        foreach (T element in collection)
                         {
-                              this.Value.Insert(index, element);
-                              onAddValue?.Invoke(element);
-                              index++;
+                              OnAddValue?.Invoke(element);
                         }
                   }
             }
 
-            public virtual void Remove(T element)
+            // --------------------------------------------------------
+            // Méthodes d'extractions
+            // --------------------------------------------------------
+
+            public void Clear()
             {
-                  if (this.Value.Exists(e => e.Equals(element)))
+                  var removedElements = new List<T>(Value);
+                  Value.Clear();
+
+                  foreach (T element in removedElements)
                   {
-                        this.Value.Remove(element);
-                        onRemoveValue?.Invoke(element);
+                        OnRemoveValue?.Invoke(element);
                   }
+            }
+
+            public void CopyTo(T[] array, int arrayIndex)
+            {
+                  Value.CopyTo(array, arrayIndex);
+            }
+
+            public bool Remove(T item)
+            {
+                  bool removed = Value.Remove(item);
+
+                  if (removed)
+                  {
+                        OnRemoveValue?.Invoke(item);
+                  }
+                  return removed;
             }
 
             public virtual void RemoveAt(int index)
             {
                   if (CheckIndex(index))
                   {
-                        T removedItem = this.Value[index];
-                        this.Value.RemoveAt(index);
-                        onRemoveValue?.Invoke(removedItem);
+                        T removedItem = Value[index];
+                        Value.RemoveAt(index);
+                        OnRemoveValue?.Invoke(removedItem);
                   }
             }
 
@@ -77,29 +105,51 @@ namespace ScriptableClass.Core
             {
                   if (CheckIndex(index))
                   {
-                        List<T> removedItems = this.Value.GetRange(index, count);
+                        List<T> removedItems = Value.GetRange(index, count);
+                        Value.RemoveRange(index, count);
 
                         foreach (T removedItem in removedItems)
                         {
-                              if (this.Value.Exists(e => e.Equals(removedItem)))
-                              {
-                                    this.Value.RemoveAt(index);
-                                    onRemoveValue?.Invoke(removedItem);
-                                    index++;
-                              }
+                              OnRemoveValue?.Invoke(removedItem);
                         }
                   }
             }
 
-            private bool CheckIndex(int index)
+            // --------------------------------------------------------
+            // Méthodes helpers
+            // --------------------------------------------------------
+
+            public bool Contains(T item)
             {
-                  if (index > -1 && index <= this.Value.Count - 1)
+                  return Value.Contains(item);
+            }
+
+            public IEnumerator<T> GetEnumerator()
+            {
+                  return Value.GetEnumerator();
+            }
+
+            IEnumerator IEnumerable.GetEnumerator()
+            {
+                  return GetEnumerator();
+            }
+
+            public int IndexOf(T item)
+            {
+                  return Value.IndexOf(item);
+            }
+
+            private bool CheckIndex(int index, bool allowEqualCount = false)
+            {
+                  int maxIndex = allowEqualCount ? Value.Count : Value.Count - 1;
+
+                  if (index >= 0 && index <= maxIndex)
                   {
                         return true;
                   }
                   else
                   {
-                        throw new System.ArgumentOutOfRangeException(nameof(index));
+                        throw new ArgumentOutOfRangeException(nameof(index));
                   }
             }
       }
